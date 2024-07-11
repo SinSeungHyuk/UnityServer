@@ -29,7 +29,6 @@ namespace ServerCore
     {
         static int num = 0;
         static SpinLock spin = new SpinLock();
-        static object lockObj = new object();
 
         static void Thread_1()
         {
