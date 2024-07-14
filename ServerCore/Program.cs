@@ -1,65 +1,64 @@
 ﻿using System;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace ServerCore
 {
-    class SpinLock
+    class GameSession : Session // 각 상황별 발생할 이벤트 구현부
     {
-        volatile int locked = 0;
-
-        public void Acquire()
+        public override void OnConnected(EndPoint endPoint)
         {
-            while (true)
-            {
-                // CAS (Compare-And-Swap)
-                int original = Interlocked.CompareExchange(ref locked, 1, 0);
-                if (original == 0) 
-                    break;
-            }
+            Console.WriteLine($"OnConnected");
+
+            byte[] sendBuff = Encoding.UTF8.GetBytes("Server programming");
+            Send(sendBuff); // Session 클래스의 Send -> RegisterSend -> OnSendCompleted
+
+            // 클라이언트 소켓 닫기
+            Thread.Sleep(100);
+            Disconnect();
         }
 
-        public void Release()
+        public override void OnDisconnected(EndPoint endPoint)
         {
-            locked = 0;
+            Console.WriteLine($"OnDisconnected");
+        }
+
+        public override void OnRecv(ArraySegment<byte> buffer)
+        {
+            string recvData = Encoding.UTF8.GetString(buffer.Array, buffer.Offset, buffer.Count);
+            Console.WriteLine($"from client : {recvData}");
+        }
+
+        public override void OnSend(int numOfBytes)
+        {
+            Console.WriteLine($"Server Send : {numOfBytes} bytes");
         }
     }
 
     class Program
     {
-        static int num = 0;
-        static SpinLock spin = new SpinLock();
-
-        static void Thread_1()
-        {
-            for (int i = 0; i < 100000; i++)
-            {
-                spin.Acquire();
-                num++;
-                spin.Release();
-            }
-        }
-
-        static void Thread_2()
-        {
-            for (int i = 0; i < 100000; i++)
-            { 
-                spin.Acquire();
-                num--;
-                spin.Release();
-            }
-        }
+        static Listener listener = new Listener();
 
         static void Main(string[] args)
         {
-            Task task1 = new Task(Thread_1);
-            Task task2 = new Task(Thread_2);
-            task1.Start();
-            task2.Start();
+            Console.WriteLine("==== Server ====\n");
 
-            Task.WaitAll(task1, task2);
+            // DNS (Domain Name System) : 도메인 이름으로 서버주소 사용
+            string host = Dns.GetHostName();
+            IPHostEntry ipHost = Dns.GetHostEntry(host);
+            IPAddress ipAddress = ipHost.AddressList[0];
+            IPEndPoint endPoint = new IPEndPoint(ipAddress, 7777); // 7777 : 포트번호
 
-            Console.WriteLine(num);
+            // GameSession을 반환타입으로 넘겨주는 람다식 넘겨주기 (세션 종류는 많을수있음)
+            listener.Init(endPoint, () => { return new GameSession(); });
+            Console.WriteLine("Listening now..");
+
+            while (true)
+            {
+            }
         }
     }
 }
